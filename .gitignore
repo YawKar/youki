@@ -1,5 +1,6 @@
 /tutorial
 .idea/
+/bundle
 
 **/target
 /contest-target

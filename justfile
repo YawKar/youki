@@ -212,3 +212,46 @@ version-up version:
 
 contest-list: contest
    {{ cwd }}/contest list
+
+
+# ADDED ONLY FOR INVESTIGATION
+studied_container := "__abracadabra_hard_name_not_to_collide"
+delete-the-already-existing-container:
+    # Delete the old container if it already exists
+    @# TODO(BUG): research: There's a strange behaviour: if we create a container but didn't run it, we cannot delete it even with --force flag
+    @if sudo ./youki state {{ studied_container }} >/dev/null 2>&1; then \
+        sudo ./youki start {{ studied_container }} || true; \
+        sudo ./youki kill {{ studied_container }} 9 || true; \
+        sudo ./youki delete --force {{ studied_container }}; \
+    fi
+
+generate-example-bundle: youki-dev delete-the-already-existing-container
+    # Checking that required programs are in PATH
+    @fail=0; \
+    programs=("sponge" "jq" "wget" "chmod"); \
+        for tocheck in "${programs[@]}"; do \
+            if ! command -v $tocheck >/dev/null; then \
+                echo "Please, install $tocheck to \$PATH"; \
+                fail=1; \
+            fi \
+        done; \
+    [ "$fail" -eq 0 ] || exit 1
+    # Create the bone
+    mkdir -p bundle/rootfs/bin
+    @# There's an issue about `youki spec` doesn't respect the `--bundle` flag: https://github.com/youki-dev/youki/pull/3543
+    @# ./youki spec --bundle ./bundle
+    (cd ./bundle && ../youki spec)
+    # Take the minimal alpine rootfs and just steal it :]
+    podman export $(podman create alpine) | tar -xf - -C ./bundle/rootfs/
+    # Patch .process.args to point to "/bin/busybox ash" inside rootfs
+    jq '.process.args = ["busybox", "ash", "-c", "sleep 3600"]' ./bundle/config.json | sponge ./bundle/config.json
+    # Patch the capabilities as prescribed in: https://github.com/youki-dev/youki/issues/3434
+    jq --slurpfile studcaps ./studied_capabilities.json '.process.capabilities = $studcaps[0]' ./bundle/config.json | sponge ./bundle/config.json
+
+run-example-bundle: generate-example-bundle
+    # About to run the container that will sleep in detached mode
+    sudo ./youki run -d --bundle ./bundle {{ studied_container }}
+    # Now try to exec. You should see the "failed to drop capabilities"
+    sudo ./youki exec {{ studied_container }} pwd || true
+    sudo ./youki kill {{ studied_container }} 9
+    sudo ./youki delete {{ studied_container }}
