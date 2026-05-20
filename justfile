@@ -216,19 +216,20 @@ contest-list: contest
 
 # ADDED ONLY FOR INVESTIGATION
 studied_container := "__abracadabra_hard_name_not_to_collide"
-delete-the-already-existing-container:
+
+delete-the-already-existing-container runtime:
     # Delete the old container if it already exists
     @# TODO(BUG): research: There's a strange behaviour: if we create a container but didn't run it, we cannot delete it even with --force flag
-    @if sudo ./youki state {{ studied_container }} >/dev/null 2>&1; then \
-        sudo ./youki start {{ studied_container }} || true; \
-        sudo ./youki kill {{ studied_container }} 9 || true; \
-        sudo ./youki delete --force {{ studied_container }}; \
+    @if sudo {{ runtime }} state {{ studied_container }} >/dev/null 2>&1; then \
+        sudo {{ runtime }} start {{ studied_container }} || true; \
+        sudo {{ runtime }} kill {{ studied_container }} 9 || true; \
+        sudo {{ runtime }} delete --force {{ studied_container }}; \
     fi
 
-generate-example-bundle: youki-dev delete-the-already-existing-container
+generate-example-bundle runtime: youki-dev (delete-the-already-existing-container runtime)
     # Checking that required programs are in PATH
     @fail=0; \
-    programs=("sponge" "jq" "wget" "chmod"); \
+    programs=("{{ runtime }}" "sponge" "jq" "wget" "chmod"); \
         for tocheck in "${programs[@]}"; do \
             if ! command -v $tocheck >/dev/null; then \
                 echo "Please, install $tocheck to \$PATH"; \
@@ -248,10 +249,10 @@ generate-example-bundle: youki-dev delete-the-already-existing-container
     # Patch the capabilities as prescribed in: https://github.com/youki-dev/youki/issues/3434
     jq --slurpfile studcaps ./studied_capabilities.json '.process.capabilities = $studcaps[0]' ./bundle/config.json | sponge ./bundle/config.json
 
-run-example-bundle: generate-example-bundle
+run-example-bundle runtime: (generate-example-bundle runtime)
     # About to run the container that will sleep in detached mode
-    sudo ./youki run -d --bundle ./bundle {{ studied_container }}
+    sudo {{ runtime }} run -d --bundle ./bundle {{ studied_container }}
     # Now try to exec. You should see the "failed to drop capabilities"
-    sudo ./youki exec {{ studied_container }} pwd || true
-    sudo ./youki kill {{ studied_container }} 9
-    sudo ./youki delete {{ studied_container }}
+    sudo {{ runtime }} exec {{ studied_container }} pwd || true
+    sudo {{ runtime }} kill {{ studied_container }} 9
+    sudo {{ runtime }} delete {{ studied_container }}
