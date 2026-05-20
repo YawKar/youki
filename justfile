@@ -221,7 +221,7 @@ delete-the-already-existing-container runtime:
     # Delete the old container if it already exists
     @# TODO(BUG): research: There's a strange behaviour: if we create a container but didn't run it, we cannot delete it even with --force flag
     @if sudo {{ runtime }} state {{ studied_container }} >/dev/null 2>&1; then \
-        sudo {{ runtime }} start {{ studied_container }} || true; \
+        sudo timeout 2 {{ runtime }} start {{ studied_container }} || true; \
         sudo {{ runtime }} kill {{ studied_container }} 9 || true; \
         sudo {{ runtime }} delete --force {{ studied_container }}; \
     fi
@@ -245,20 +245,26 @@ generate-example-bundle runtime: youki-dev (delete-the-already-existing-containe
     # Take the minimal alpine rootfs and just steal it :]
     podman export $(podman create alpine) | tar -xf - -C ./bundle/rootfs/
     # Patch .process.args to point to "/bin/busybox ash" inside rootfs
-    jq '.process.args = ["busybox", "ash", "-c", "sleep 1"]' ./bundle/config.json | sponge ./bundle/config.json
+    jq '.process.args = ["busybox", "ash", "-c", "sleep 5"]' ./bundle/config.json | sponge ./bundle/config.json
     # Patch the capabilities as prescribed in: https://github.com/youki-dev/youki/issues/3434
     jq --slurpfile studcaps ./studied_capabilities.json '.process.capabilities = $studcaps[0]' ./bundle/config.json | sponge ./bundle/config.json
 
 run-example-bundle runtime strace-run="0" strace-exec="0": (generate-example-bundle runtime)
     # About to run the container that will sleep in detached mode
     sudo \
-    {{ if strace-run == "1" { "strace -ff --output=strace.run" } else { "" } }} \
+    {{ if strace-run == "1" { "strace --daemonize -ff -o strace.run" } else { "" } }} \
     {{ runtime }} \
     run -d --bundle ./bundle {{ studied_container }}
     # Now try to exec. You should see the "failed to drop capabilities"
     sudo \
-    {{ if strace-exec == "1" { "strace -ff --output=strace.exec" } else { "" } }} \
+    {{ if strace-exec == "1" { "lurk -f -o strace.exec" } else { "" } }} \
     {{ runtime }} \
     exec {{ studied_container }} pwd || true
     sudo {{ runtime }} kill {{ studied_container }} 9
     sudo {{ runtime }} delete {{ studied_container }}
+
+strace-youki:
+    just run-example-bundle ./youki 0 1
+strace-runc:
+    just run-example-bundle runc 1 0 
+

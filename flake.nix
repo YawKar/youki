@@ -25,6 +25,7 @@
         {
           devShells.default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
+              lurk # alternative strace with pretty print
               runc
               pkg-config
               libseccomp
