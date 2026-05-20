@@ -229,7 +229,7 @@ delete-the-already-existing-container runtime:
 generate-example-bundle runtime: youki-dev (delete-the-already-existing-container runtime)
     # Checking that required programs are in PATH
     @fail=0; \
-    programs=("{{ runtime }}" "sponge" "jq" "wget" "chmod"); \
+    programs=("./youki" "sponge" "jq" "wget" "chmod"); \
         for tocheck in "${programs[@]}"; do \
             if ! command -v $tocheck >/dev/null; then \
                 echo "Please, install $tocheck to \$PATH"; \
@@ -245,14 +245,20 @@ generate-example-bundle runtime: youki-dev (delete-the-already-existing-containe
     # Take the minimal alpine rootfs and just steal it :]
     podman export $(podman create alpine) | tar -xf - -C ./bundle/rootfs/
     # Patch .process.args to point to "/bin/busybox ash" inside rootfs
-    jq '.process.args = ["busybox", "ash", "-c", "sleep 3600"]' ./bundle/config.json | sponge ./bundle/config.json
+    jq '.process.args = ["busybox", "ash", "-c", "sleep 1"]' ./bundle/config.json | sponge ./bundle/config.json
     # Patch the capabilities as prescribed in: https://github.com/youki-dev/youki/issues/3434
     jq --slurpfile studcaps ./studied_capabilities.json '.process.capabilities = $studcaps[0]' ./bundle/config.json | sponge ./bundle/config.json
 
-run-example-bundle runtime: (generate-example-bundle runtime)
+run-example-bundle runtime strace-run="0" strace-exec="0": (generate-example-bundle runtime)
     # About to run the container that will sleep in detached mode
-    sudo {{ runtime }} run -d --bundle ./bundle {{ studied_container }}
+    sudo \
+    {{ if strace-run == "1" { "strace -ff --output=strace.run" } else { "" } }} \
+    {{ runtime }} \
+    run -d --bundle ./bundle {{ studied_container }}
     # Now try to exec. You should see the "failed to drop capabilities"
-    sudo {{ runtime }} exec {{ studied_container }} pwd || true
+    sudo \
+    {{ if strace-exec == "1" { "strace -ff --output=strace.exec" } else { "" } }} \
+    {{ runtime }} \
+    exec {{ studied_container }} pwd || true
     sudo {{ runtime }} kill {{ studied_container }} 9
     sudo {{ runtime }} delete {{ studied_container }}
