@@ -257,14 +257,14 @@ run-example-bundle runtime strace-run="0" strace-exec="0": (generate-example-bun
     run -d --bundle ./bundle {{ studied_container }}
     # Now try to exec. You should see the "failed to drop capabilities"
     sudo \
-    {{ if strace-exec == "1" { "lurk -f -o strace.exec" } else { "" } }} \
+    {{ if strace-exec == "1" { "strace -ff -o strace.exec" } else { "" } }} \
     {{ runtime }} \
     exec {{ studied_container }} pwd || true
     sudo {{ runtime }} kill {{ studied_container }} 9
     sudo {{ runtime }} delete {{ studied_container }}
 
 strace-youki:
-    just run-example-bundle ./youki 0 1
+    just run-example-bundle "./youki --debug" 0 1
 strace-runc:
     just run-example-bundle runc 1 0 
 
